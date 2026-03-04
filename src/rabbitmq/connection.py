@@ -24,16 +24,26 @@ class RabbitMQConnection:
     """RabbitMQ connection manager for message operations."""
 
     def __init__(
-        self, hostname: str, username: str, password: str, port: int = 5617, use_tls: bool = True
+        self,
+        hostname: str,
+        username: str,
+        password: str,
+        port: int = 0,
+        use_tls: bool = True,
     ):
-        """Initialize RabbitMQ connection parameters."""
-        port = 5671
+        """Initialize RabbitMQ connection parameters.
+
+        When port is 0, defaults to 5671 (TLS) or 5672 (non-TLS).
+        """
+        if not port:
+            port = 5671 if use_tls else 5672
         host = hostname
-        self.protocol = "amqps" if use_tls else "amqp"
-        self.url = f"{self.protocol}://{username}:{password}@{host}:{port}"
+        self.protocol = 'amqps' if use_tls else 'amqp'
+        self.url = f'{self.protocol}://{username}:{password}@{host}:{port}'
         self.parameters = pika.URLParameters(self.url)
-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        self.parameters.ssl_options = pika.SSLOptions(context=ssl_context)
+        if use_tls:
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            self.parameters.ssl_options = pika.SSLOptions(context=ssl_context)
 
     def get_channel(self) -> tuple[Any, Any]:
         """Create and return a connection and channel for RabbitMQ operations."""

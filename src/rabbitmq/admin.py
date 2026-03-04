@@ -27,11 +27,23 @@ from .connection import validate_rabbitmq_name
 class RabbitMQAdmin:
     """RabbitMQAdmin class provides API to call RabbitMQ APIs."""
 
-    def __init__(self, hostname: str, username: str, password: str, use_tls: bool = True):
-        """Initialize RabbitMQ admin client."""
+    def __init__(
+        self,
+        hostname: str,
+        username: str,
+        password: str,
+        use_tls: bool = True,
+        port: int = 0,
+    ):
+        """Initialize RabbitMQ admin client.
+
+        When port is 0 the default port for the chosen protocol is used
+        (443 for HTTPS, 80 for HTTP).  Pass an explicit port for non-standard
+        setups.
+        """
         host = hostname
-        self.protocol = "https" if use_tls else "http"
-        self.base_url = f"{self.protocol}://{host}/api"
+        self.protocol = 'https' if use_tls else 'http'
+        self.base_url = f'{self.protocol}://{host}:{port}/api' if port else f'{self.protocol}://{host}/api'
         self.auth = base64.b64encode(f"{username}:{password}".encode()).decode()
         self.headers = {"Authorization": f"Basic {self.auth}", "Content-Type": "application/json"}
 
@@ -40,7 +52,7 @@ class RabbitMQAdmin:
     ) -> requests.Response:
         """Make HTTP request to RabbitMQ API."""
         url = f"{self.base_url}/{endpoint}"
-        response = requests.request(method, url, headers=self.headers, json=data, verify=True)
+        response = requests.request(method, url, headers=self.headers, json=data, verify=(self.protocol == 'https'))
         response.raise_for_status()
         return response
 

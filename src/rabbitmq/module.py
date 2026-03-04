@@ -70,6 +70,8 @@ class RabbitMQModule:
         ) -> str:
             """Connect to a new RabbitMQ broker which authentication strategy is SIMPLE.
 
+            For self-hosted brokers with the management API on a custom port
+            (e.g. 15672), pass that as ``port`` and set ``use_tls=False``.
             broker_hostname: The hostname of the broker. For example, b-a9565a64-da39-4afc-9239-c43a9376b5ba.mq.us-east-1.on.aws, b-9560b8e1-3d33-4d91-9488-a3dc4a61dfe7.mq.us-east-1.amazonaws.com
             username: The username of user
             password: The password of user
@@ -86,6 +88,8 @@ class RabbitMQModule:
                     hostname=broker_hostname,
                     username=username,
                     password=password,
+                    use_tls=use_tls,
+                    port=port,
                 )
                 self.rmq_admin.test_connection()
                 return "successfully connected"
