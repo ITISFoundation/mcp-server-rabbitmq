@@ -14,6 +14,7 @@
 # This file is part of the awslabs namespace.
 # It is intentionally minimal to support PEP 420 namespace packages.
 
+import os
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -58,6 +59,45 @@ class RabbitMQModule:
         self.__register_read_only_tools()
         if allow_mutative_tools:
             self.__register_mutative_tools()
+        self._auto_connect_from_env()
+
+    def _auto_connect_from_env(self) -> None:
+        """Pre-connect using RABBITMQ_* environment variables if set.
+
+        This allows the server to work behind MCP proxies/aggregators
+        where each session spawns a fresh subprocess and per-session
+        state from initialize_connection would be lost.
+
+        Recognised variables:
+            RABBITMQ_HOST          – broker hostname (required)
+            RABBITMQ_USERNAME      – auth username   (required)
+            RABBITMQ_PASSWORD      – auth password   (required)
+            RABBITMQ_PORT          – AMQP port       (default: 0 → auto)
+            RABBITMQ_MANAGEMENT_PORT – HTTP API port  (default: 0 → auto)
+            RABBITMQ_USE_TLS       – "true"/"false"  (default: "true")
+        """
+        host = os.environ.get("RABBITMQ_HOST", "")
+        user = os.environ.get("RABBITMQ_USERNAME", "")
+        pw = os.environ.get("RABBITMQ_PASSWORD", "")
+        if not (host and user and pw):
+            return
+        port = int(os.environ.get("RABBITMQ_PORT", "0") or "0")
+        mgmt_port = int(os.environ.get("RABBITMQ_MANAGEMENT_PORT", "0") or "0")
+        use_tls = os.environ.get("RABBITMQ_USE_TLS", "true").lower() in ("true", "1", "yes")
+        try:
+            self.rmq = RabbitMQConnection(
+                hostname=host, username=user, password=pw,
+                port=port, use_tls=use_tls,
+            )
+            self.rmq_admin = RabbitMQAdmin(
+                hostname=host, username=user, password=pw,
+                use_tls=use_tls, port=mgmt_port,
+            )
+            self.rmq_admin.test_connection()
+        except Exception:
+            # Silently fall back to manual initialization
+            self.rmq = None
+            self.rmq_admin = None
 
     def __register_critical_tools(self):
         @self.mcp.tool()

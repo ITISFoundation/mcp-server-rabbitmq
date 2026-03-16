@@ -1,0 +1,163 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Dustin Kaiser <dustin@itis.swiss>
+Date: Tue, 4 Mar 2026 13:00:00 +0100
+Subject: [PATCH] fix: support non-TLS RabbitMQ brokers and fix tool name typos
+
+The amazon-mq-mcp-server RabbitMQ module was built exclusively for
+AWS-managed brokers which always use TLS on port 443/5671. This makes
+it unusable with self-hosted RabbitMQ instances that expose the
+management API over plain HTTP on a custom port (e.g. 15672).
+
+Changes:
+
+admin.py:
+  - Accept `use_tls` (bool) and `port` (int) in __init__
+  - Set protocol to http/https based on use_tls
+  - Include port in base_url when a non-default port is provided
+  - Set verify= based on protocol instead of hardcoding True
+
+connection.py:
+  - Accept `port` (int) and `use_tls` (bool) in __init__
+  - Support plain amqp:// connections without SSL when use_tls=False
+  - Default to port 5671 (TLS) or 5672 (non-TLS) when port=0
+
+module.py:
+  - Fix typo: rabbimq_broker_initialize_connection ->
+    rabbitmq_broker_initialize_connection
+  - Fix typo: rabbimq_broker_initialize_connection_with_oauth ->
+    rabbitmq_broker_initialize_connection_with_oauth
+  - Add port and use_tls parameters to initialize_connection tool
+  - Forward port and use_tls to RabbitMQAdmin and RabbitMQConnection
+---
+ .../rabbitmq/admin.py      | 18 ++++++++++---
+ .../rabbitmq/connection.py | 19 +++++++++++---
+ .../rabbitmq/module.py     | 26 ++++++++++++------
+ 3 files changed, 47 insertions(+), 16 deletions(-)
+
+diff --git a/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/admin.py b/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/admin.py
+index 0000000..1111111 100644
+--- a/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/admin.py
++++ b/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/admin.py
+@@ -25,11 +25,21 @@ from urllib.parse import quote
+ class RabbitMQAdmin:
+     """RabbitMQAdmin class provides API to call RabbitMQ APIs."""
+ 
+-    def __init__(self, hostname: str, username: str, password: str):
+-        """Initialize RabbitMQ admin client."""
++    def __init__(
++        self,
++        hostname: str,
++        username: str,
++        password: str,
++        use_tls: bool = True,
++        port: int = 0,
++    ):
++        """Initialize RabbitMQ admin client.
++
++        When port is 0 the default port for the chosen protocol is used
++        (443 for HTTPS, 80 for HTTP).  Pass an explicit port for non-standard
++        setups such as the RabbitMQ management UI on port 15672.
++        """
+         host = hostname
+-        self.protocol = 'https'
+-        self.base_url = f'{self.protocol}://{host}/api'
++        self.protocol = 'https' if use_tls else 'http'
++        self.base_url = f'{self.protocol}://{host}:{port}/api' if port else f'{self.protocol}://{host}/api'
+         self.auth = base64.b64encode(f'{username}:{password}'.encode()).decode()
+         self.headers = {'Authorization': f'Basic {self.auth}', 'Content-Type': 'application/json'}
+ 
+@@ -39,7 +49,7 @@ class RabbitMQAdmin:
+         """Make HTTP request to RabbitMQ API."""
+         url = f'{self.base_url}/{endpoint}'
+-        response = requests.request(method, url, headers=self.headers, json=data, verify=True)
++        response = requests.request(method, url, headers=self.headers, json=data, verify=(self.protocol == 'https'))
+         response.raise_for_status()
+         return response
+ 
+diff --git a/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/connection.py b/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/connection.py
+index 0000000..1111111 100644
+--- a/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/connection.py
++++ b/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/connection.py
+@@ -21,14 +21,25 @@ from typing import Any
+ class RabbitMQConnection:
+     """RabbitMQ connection manager for message operations."""
+ 
+-    def __init__(self, hostname: str, username: str, password: str):
+-        """Initialize RabbitMQ connection parameters."""
+-        port = 5671
++    def __init__(
++        self,
++        hostname: str,
++        username: str,
++        password: str,
++        port: int = 0,
++        use_tls: bool = True,
++    ):
++        """Initialize RabbitMQ connection parameters.
++
++        When port is 0, defaults to 5671 (TLS) or 5672 (non-TLS).
++        """
++        if not port:
++            port = 5671 if use_tls else 5672
+         host = hostname
+-        self.protocol = 'amqps'
++        self.protocol = 'amqps' if use_tls else 'amqp'
+         self.url = f'{self.protocol}://{username}:{password}@{host}:{port}'
+         self.parameters = pika.URLParameters(self.url)
+-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+-        self.parameters.ssl_options = pika.SSLOptions(context=ssl_context)
++        if use_tls:
++            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
++            self.parameters.ssl_options = pika.SSLOptions(context=ssl_context)
+ 
+     def get_channel(self) -> tuple[Any, Any]:
+         """Create and return a connection and channel for RabbitMQ operations."""
+diff --git a/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/module.py b/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/module.py
+index 0000000..1111111 100644
+--- a/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/module.py
++++ b/src/amazon-mq-mcp-server/awslabs/amazon_mq_mcp_server/rabbitmq/module.py
+@@ -62,13 +62,17 @@ class RabbitMQModule:
+ 
+     def __register_critical_tools(self):
+         @self.mcp.tool()
+-        def rabbimq_broker_initialize_connection(
++        def rabbitmq_broker_initialize_connection(
+             broker_hostname: str,
+             username: str,
+             password: str,
++            port: int = 5671,
++            use_tls: bool = True,
+         ) -> str:
+             """Connect to a new RabbitMQ broker which authentication strategy is SIMPLE.
+ 
++            For self-hosted brokers with the management API on a custom port
++            (e.g. 15672), pass that as ``port`` and set ``use_tls=False``.
+             broker_hostname: The hostname of the broker. For example, b-a9565a64-da39-4afc-9239-c43a9376b5ba.mq.us-east-1.on.aws, b-9560b8e1-3d33-4d91-9488-a3dc4a61dfe7.mq.us-east-1.amazonaws.com
+             username: The username of user
+             password: The password of user
+@@ -77,11 +81,15 @@ class RabbitMQModule:
+                 self.rmq = RabbitMQConnection(
+                     hostname=broker_hostname,
+                     username=username,
+                     password=password,
++                    port=port,
++                    use_tls=use_tls,
+                 )
+                 self.rmq_admin = RabbitMQAdmin(
+                     hostname=broker_hostname,
+                     username=username,
+                     password=password,
++                    use_tls=use_tls,
++                    port=port,
+                 )
+                 self.rmq_admin.test_connection()
+                 return 'successfully connected'
+@@ -89,7 +97,7 @@ class RabbitMQModule:
+                 raise e
+ 
+         @self.mcp.tool()
+-        def rabbimq_broker_initialize_connection_with_oauth(
++        def rabbitmq_broker_initialize_connection_with_oauth(
+             broker_hostname: str,
+             oauth_token: str,
+         ) -> str:
