@@ -37,6 +37,21 @@ class TestRabbitMQAdmin:
         assert admin.protocol == "https"
         assert admin.base_url == "https://localhost/api"
 
+    def test_init_without_tls(self):
+        a = RabbitMQAdmin("localhost", "user", "pass", use_tls=False, port=15672)
+        assert a.protocol == "http"
+        assert a.base_url == "http://localhost:15672/api"
+
+    def test_init_without_tls_no_port(self):
+        a = RabbitMQAdmin("localhost", "user", "pass", use_tls=False)
+        assert a.protocol == "http"
+        assert a.base_url == "http://localhost/api"
+
+    def test_init_custom_tls_port(self):
+        a = RabbitMQAdmin("localhost", "user", "pass", use_tls=True, port=8443)
+        assert a.protocol == "https"
+        assert a.base_url == "https://localhost:8443/api"
+
     @patch("src.rabbitmq.admin.requests.request")
     def test_list_queues(self, mock_request, admin, mock_response):
         mock_request.return_value = mock_response
