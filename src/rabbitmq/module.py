@@ -65,16 +65,21 @@ class RabbitMQModule:
             broker_hostname: str,
             username: str,
             password: str,
-            port: int = 5671,
+            port: int = 0,
+            management_port: int = 0,
             use_tls: bool = True,
         ) -> str:
             """Connect to a new RabbitMQ broker which authentication strategy is SIMPLE.
 
-            For self-hosted brokers with the management API on a custom port
-            (e.g. 15672), pass that as ``port`` and set ``use_tls=False``.
-            broker_hostname: The hostname of the broker. For example, b-a9565a64-da39-4afc-9239-c43a9376b5ba.mq.us-east-1.on.aws, b-9560b8e1-3d33-4d91-9488-a3dc4a61dfe7.mq.us-east-1.amazonaws.com
+            broker_hostname: The hostname of the broker (without port). For example,
+                b-a9565a64-da39-4afc-9239-c43a9376b5ba.mq.us-east-1.on.aws
             username: The username of user
             password: The password of user
+            port: AMQP port. Defaults to 5671 (TLS) or 5672 (non-TLS) when 0.
+            management_port: RabbitMQ Management API port. Defaults to 443 (TLS)
+                or 15672 (non-TLS) when 0.
+            use_tls: Whether to use TLS for both AMQP and management connections.
+                Set to False for self-hosted brokers using plain HTTP/AMQP.
             """
             try:
                 self.rmq = RabbitMQConnection(
@@ -89,7 +94,7 @@ class RabbitMQModule:
                     username=username,
                     password=password,
                     use_tls=use_tls,
-                    port=port,
+                    port=management_port,
                 )
                 self.rmq_admin.test_connection()
                 return "successfully connected"

@@ -26,7 +26,12 @@ class TestRabbitMQConnection:
     def test_init_without_tls(self):
         conn = RabbitMQConnection("localhost", "user", "pass", use_tls=False)
         assert conn.protocol == "amqp"
-        assert "amqp://user:pass@localhost:5671" == conn.url
+        assert "amqp://user:pass@localhost:5672" == conn.url
+
+    def test_init_custom_port(self):
+        conn = RabbitMQConnection("localhost", "user", "pass", port=5673, use_tls=False)
+        assert conn.protocol == "amqp"
+        assert "amqp://user:pass@localhost:5673" == conn.url
 
 
 class TestValidateRabbitMQName:
